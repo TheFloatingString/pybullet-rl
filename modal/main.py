@@ -1,22 +1,31 @@
 import modal
 import os
+import wandb
 
 
 app = modal.App("pybullet-rl")
 
 # Create image with pybullet, torch, and stable-baselines3
-image = modal.Image.debian_slim(python_version="3.11").pip_install(
-    "pybullet",
-    "torch",
-    "stable-baselines3",
-    "wandb",
+image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        "pybullet",
+        "torch",
+        "stable-baselines3",
+        "wandb",
+    )
+    .pip_install("imageio", "imageio-ffmpeg")
 )
+
+# Create mount for the src directory
+src_mount = modal.Mount.from_local_dir("./src", remote_path="/root/src")
 
 
 @app.function(
     image=image,
     gpu="T4",  # Use NVIDIA T4 GPU
     timeout=3600,  # 1 hour timeout
+    mounts=[src_mount],
 )
 def run_pybullet(wandb_api_key: str) -> None:
     """Run PyBullet on GPU instance with torch and stable-baselines3."""
@@ -27,6 +36,7 @@ def run_pybullet(wandb_api_key: str) -> None:
     import torch
     import wandb
     from math import pi
+    from src.create_objects import create_rgb_axes
 
     # Set wandb API key as environment variable
     os.environ["WANDB_API_KEY"] = wandb_api_key
@@ -77,122 +87,33 @@ def run_pybullet(wandb_api_key: str) -> None:
     #     basePosition=[0.85, -0.2, 1],
     #     globalScaling=0.05,
     # )
-    # ROBOT_ID = p.loadURDF(
-    #     "kuka_iiwa/model.urdf",
-    #     basePosition=[1.4, 1, 0.6],
-    #     useFixedBase=True,
+    ROBOT_ID = p.loadURDF(
+        "kuka_iiwa/model.urdf",
+        basePosition=[0.5, 0, 0],
+        useFixedBase=True,
+    )
+
+    NUM_JOINTS = p.getNumJoints(ROBOT_ID)
+    JOINT_INDEX = 6
+    POSE = pi / 2
+    p.resetJointState(ROBOT_ID, JOINT_INDEX, POSE)
+
+    create_rgb_axes(p)
+
+    # CUBE_BASE_POSITION = [1,-2,0.2]
+    # CUBE_EULER_ORIENTATION = [0,0,0]
+
+    # CUBE_ID = p.loadURDF(
+    #     "cube.urdf",
+    #     basePosition=CUBE_BASE_POSITION,
+    #     baseOrientation=p.getQuaternionFromEuler(CUBE_EULER_ORIENTATION),
+    #     globalScaling=0.1,
     # )
-
-    # Define the origin and the length of the axes
-    origin = [0, 0, 0.5]  # Start drawing at z=0.5
-    axis_length = 1.0
-    arrow_radius = 0.02
-    arrow_head_radius = 0.04
-    arrow_head_length = 0.15
-
-    # --- Create XYZ (RGB) Arrows using visual shapes ---
-
-    # X-axis (Red) - arrow pointing in +X direction
-    x_shaft = p.createVisualShape(
-        p.GEOM_CYLINDER,
-        radius=arrow_radius,
-        length=axis_length - arrow_head_length,
-        rgbaColor=[1, 0, 0, 1],
-    )
-    x_head = p.createVisualShape(
-        p.GEOM_CYLINDER,
-        radius=arrow_head_radius,
-        length=arrow_head_length,
-        rgbaColor=[1, 0, 0, 1],
-    )
-    p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=x_shaft,
-        basePosition=[
-            origin[0] + (axis_length - arrow_head_length) / 2,
-            origin[1],
-            origin[2],
-        ],
-        baseOrientation=p.getQuaternionFromEuler([0, pi / 2, 0]),
-    )
-    p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=x_head,
-        basePosition=[
-            origin[0] + axis_length - arrow_head_length / 2,
-            origin[1],
-            origin[2],
-        ],
-        baseOrientation=p.getQuaternionFromEuler([0, pi / 2, 0]),
-    )
-
-    # Y-axis (Green) - arrow pointing in +Y direction
-    y_shaft = p.createVisualShape(
-        p.GEOM_CYLINDER,
-        radius=arrow_radius,
-        length=axis_length - arrow_head_length,
-        rgbaColor=[0, 1, 0, 1],
-    )
-    y_head = p.createVisualShape(
-        p.GEOM_CYLINDER,
-        radius=arrow_head_radius,
-        length=arrow_head_length,
-        rgbaColor=[0, 1, 0, 1],
-    )
-    p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=y_shaft,
-        basePosition=[
-            origin[0],
-            origin[1] + (axis_length - arrow_head_length) / 2,
-            origin[2],
-        ],
-        baseOrientation=p.getQuaternionFromEuler([pi / 2, 0, 0]),
-    )
-    p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=y_head,
-        basePosition=[
-            origin[0],
-            origin[1] + axis_length - arrow_head_length / 2,
-            origin[2],
-        ],
-        baseOrientation=p.getQuaternionFromEuler([pi / 2, 0, 0]),
-    )
-
-    # Z-axis (Blue) - arrow pointing in +Z direction
-    z_shaft = p.createVisualShape(
-        p.GEOM_CYLINDER,
-        radius=arrow_radius,
-        length=axis_length - arrow_head_length,
-        rgbaColor=[0, 0, 1, 1],
-    )
-    z_head = p.createVisualShape(
-        p.GEOM_CYLINDER,
-        radius=arrow_head_radius,
-        length=arrow_head_length,
-        rgbaColor=[0, 0, 1, 1],
-    )
-    p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=z_shaft,
-        basePosition=[
-            origin[0],
-            origin[1],
-            origin[2] + (axis_length - arrow_head_length) / 2,
-        ],
-        baseOrientation=p.getQuaternionFromEuler([0, 0, 0]),
-    )
-    p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=z_head,
-        basePosition=[
-            origin[0],
-            origin[1],
-            origin[2] + axis_length - arrow_head_length / 2,
-        ],
-        baseOrientation=p.getQuaternionFromEuler([0, 0, 0]),
-    )
+    # p.changeVisualShape(
+    #     objectUniqueId=CUBE_ID,
+    #     rgbaColor=[0, 0, 1, 1],
+    #     linkIndex=-1
+    # )
 
     print("PyBullet physics client initialized successfully!")
 
@@ -217,7 +138,19 @@ def run_pybullet(wandb_api_key: str) -> None:
     rgb_array = img_arr[2][:, :, :3]  # Extract RGB channels (remove alpha)
 
     # Log frame to wandb
-    wandb.log({"camera_frame": wandb.Image(rgb_array, caption="PyBullet Camera View")})
+    wandb.log(
+        {
+            "camera_frame": wandb.Image(
+                rgb_array, caption=f"KUKA Arm pose: {POSE} at joint {JOINT_INDEX}"
+            )
+        }
+    )
+    wandb.log({"joint_index": JOINT_INDEX, "pose": POSE})
+    # wandb.log({
+    #     "cube_base_position": p.getBasePositionAndOrientation(CUBE_ID)[0],
+    #     "cube_base_orientation": p.getBasePositionAndOrientation(CUBE_ID)[1],
+    #     "cube_base_orientation_euler": p.getEulerFromQuaternion(p.getBasePositionAndOrientation(CUBE_ID)[1]),
+    # })
     print("Camera frame uploaded to wandb")
 
     p.disconnect()
@@ -225,6 +158,96 @@ def run_pybullet(wandb_api_key: str) -> None:
 
     # Finish wandb run
     wandb.finish()
+
+
+@app.function(
+    image=image,
+    gpu="T4",  # Use NVIDIA T4 GPU
+    timeout=3600,  # 1 hour timeout
+    mounts=[src_mount],
+)
+def run_rl(wandb_api_key: str) -> None:
+    import imageio
+    from stable_baselines3 import PPO
+    from stable_baselines3.common.callbacks import BaseCallback
+    from src.environments import KukaEnv, RewardLoggerCallback, _render_camera_view
+
+    os.environ["WANDB_API_KEY"] = wandb_api_key
+    wandb.login(key=wandb_api_key, relogin=True)
+    wandb.init(
+        entity="larryl729-team",
+        project="pybullet-rl",
+        name="reinforcement-learning-run",
+    )
+
+    class VideoRecorderCallback(BaseCallback):
+        def __init__(self, record_freq: int = 5000, verbose: int = 0):
+            super().__init__(verbose)
+            self.record_freq = record_freq
+            self.video_count = 0
+
+        def _on_step(self) -> bool:
+            if self.n_calls % self.record_freq == 0:
+                self._record_video()
+            return True
+
+        def _record_video(self) -> None:
+            frames = []
+            obs, info = self.training_env.envs[0].env.reset()
+            for i in range(1000):
+                action, _states = self.model.predict(obs, deterministic=True)
+                obs, reward, terminated, truncated, info = self.training_env.envs[
+                    0
+                ].env.step(action)
+                if i % 8 == 0:
+                    frames.append(_render_camera_view())
+                if terminated or truncated:
+                    break
+
+            video_path = f"robot_demo_{self.video_count}.mp4"
+            imageio.mimsave(video_path, frames, fps=30)
+            wandb.log(
+                {
+                    "video": wandb.Video(video_path),
+                    "video_timestep": self.n_calls,
+                }
+            )
+            self.video_count += 1
+
+    env = KukaEnv()
+    env.reset()
+
+    reward_callback = RewardLoggerCallback()
+    video_callback = VideoRecorderCallback(record_freq=5000)
+
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        n_steps=1000,
+        batch_size=64,
+        learning_rate=1e-4,
+        n_epochs=10,
+    )
+    model.learn(total_timesteps=1e7, callback=[reward_callback, video_callback])
+
+    # record a final video demo of the trained policy
+    frames = []
+    obs, info = env.reset()
+    for i in range(1000):
+        action, _states = model.predict(obs, deterministic=True)
+        obs, reward, terminated, truncated, info = env.step(action)
+        if i % 8 == 0:
+            frames.append(_render_camera_view())
+        if terminated or truncated:
+            break
+
+    # save frames to video
+    imageio.mimsave("robot_demo_final.mp4", frames, fps=30)
+
+    wandb.log({"video_final": wandb.Video("robot_demo_final.mp4")})
+
+    env.close()
 
 
 @app.local_entrypoint()
@@ -238,4 +261,12 @@ def main() -> None:
     if not wandb_api_key:
         raise ValueError("WANDB_API_KEY not found in environment")
 
-    run_pybullet.remote(wandb_api_key)
+    # Get mode from environment variable, default to "pybullet"
+    mode = os.getenv("MODE", "pybullet")
+    if mode not in ["pybullet", "rl"]:
+        raise ValueError(f"Invalid MODE: {mode}. Must be 'pybullet' or 'rl'")
+
+    if mode == "pybullet":
+        run_pybullet.remote(wandb_api_key)
+    elif mode == "rl":
+        run_rl.remote(wandb_api_key)
